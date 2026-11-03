@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101918">
+  <title>H2S Dosimeter Wristband | Monitoring Console</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101918;
+      --panel: #172321;
+      --panel-raised: #1c2927;
+      --line: #2b3a37;
+      --muted: #91a39f;
+      --text: #edf4f1;
+      --teal: #57d6c0;
+      --teal-soft: rgba(87, 214, 192, .12);
+      --amber: #f1b85c;
+      --red: #ff6c66;
+      --green: #6ed6a3;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: "Aptos", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(ellipse at 86% 0%, rgba(52, 118, 105, .13), transparent 34rem),
+        repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(142, 177, 166, .025) 40px),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.45 var(--sans);
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .shell { max-width: 1480px; margin: 0 auto; padding: 28px 34px 40px; }
+    .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 26px; }
+    .eyebrow, .section-kicker { color: var(--teal); font: 10px/1.3 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; }
+    h1 { margin: 5px 0 7px; font-size: clamp(22px, 3vw, 32px); line-height: 1.15; font-weight: 650; letter-spacing: 0; }
+    .team { color: var(--muted); font-size: 13px; }
+    .team strong { color: #c9d6d2; font-weight: 500; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .badge { display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--line); background: rgba(23, 35, 33, .85); border-radius: 3px; padding: 9px 12px; color: #c8d6d2; font: 11px var(--mono); white-space: nowrap; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px currentColor; }
+    .badge.offline .dot { background: var(--red); }
+    .mode-switch { display: inline-flex; border: 1px solid var(--line); padding: 3px; background: #131d1b; border-radius: 4px; }
+    .mode-switch button { background: transparent; border: 0; color: var(--muted); border-radius: 2px; padding: 7px 10px; font-size: 11px; cursor: pointer; }
+    .mode-switch button.active { background: #29423d; color: var(--teal); }
+    .settings { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: -7px 0 20px; padding: 11px 13px; border: 1px solid var(--line); background: rgba(23, 35, 33, .72); border-radius: 4px; }
+    .settings label { color: var(--muted); font-size: 11px; }
+    .settings input { width: 72px; border: 1px solid #3a4b47; background: #101918; border-radius: 3px; color: var(--text); padding: 6px 8px; font: 12px var(--mono); }
+    .settings input.endpoint { width: min(250px, 52vw); }
+    .settings .divider { height: 22px; border-left: 1px solid var(--line); margin: 0 4px; }
+    .subtle { color: var(--muted); font-size: 11px; margin-left: auto; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .metric, .panel { border: 1px solid var(--line); background: linear-gradient(145deg, rgba(28, 41, 39, .96), rgba(22, 33, 31, .96)); border-radius: 5px; }
+    .metric { min-width: 0; padding: 15px 16px 11px; position: relative; overflow: hidden; }
+    .metric::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--state, var(--teal)); opacity: .8; }
+    .metric-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .metric-name { color: #b6c4c0; font-size: 11px; }
+    .state { color: var(--state, var(--teal)); font: 9px var(--mono); text-transform: uppercase; letter-spacing: .6px; }
+    .value-line { display: flex; align-items: baseline; gap: 6px; margin: 13px 0 7px; white-space: nowrap; }
+    .value { font: 600 27px/1 var(--mono); letter-spacing: 0; transition: color .25s ease; }
+    .unit { color: var(--muted); font: 11px var(--mono); }
+    .mini-meta { color: #778985; font: 10px var(--mono); }
+    .sparkline { display: block; width: 100%; height: 35px; margin-top: 7px; overflow: visible; }
+    .sparkline path { fill: none; stroke: var(--state, var(--teal)); stroke-width: 1.7; vector-effect: non-scaling-stroke; }
+    .grid-main { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.98fr); gap: 14px; margin-bottom: 14px; }
+    .panel { padding: 17px 18px; min-width: 0; }
+    .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .panel h2 { margin: 4px 0 0; font-size: 15px; font-weight: 550; letter-spacing: 0; }
+    .panel-note { color: var(--muted); font: 10px var(--mono); }
+    .gauge-wrap { display: grid; place-items: center; position: relative; min-height: 208px; }
+    .gauge { width: min(100%, 290px); overflow: visible; }
+    .gauge-track, .gauge-value { fill: none; stroke-width: 14; stroke-linecap: round; }
+    .gauge-track { stroke: #2d3b38; }
+    .gauge-value { stroke: var(--green); transition: stroke-dashoffset .65s cubic-bezier(.2,.8,.2,1), stroke .25s ease; }
+    .gauge-copy { position: absolute; top: 52%; transform: translateY(-42%); text-align: center; }
+    .gauge-number { font: 600 38px/1 var(--mono); }
+    .gauge-unit { color: var(--muted); font: 11px var(--mono); margin-top: 7px; }
+    .gauge-scale { display: flex; justify-content: space-between; width: min(100%, 250px); margin: -5px auto 10px; color: var(--muted); font: 9px var(--mono); }
+    .bands { display: flex; gap: 5px; margin-top: 13px; }
+    .band { flex: 1; text-align: center; border-top: 2px solid var(--green); padding-top: 6px; color: var(--muted); font: 9px var(--mono); }
+    .band.warn { border-color: var(--amber); }
+    .band.danger { border-color: var(--red); }
+    .chart-panel { min-height: 310px; }
+    .chart-wrap { height: 225px; position: relative; }
+    .legend { display: flex; gap: 16px; color: var(--muted); font-size: 10px; }
+    .legend span { display: flex; align-items: center; gap: 6px; }
+    .legend i { width: 13px; height: 2px; display: inline-block; background: var(--teal); }
+    .legend .mq-key { background: var(--amber); }
+    .lower-grid { display: grid; grid-template-columns: 1.05fr 1.2fr 1fr; gap: 14px; }
+    .exposure-big { display: flex; align-items: baseline; gap: 7px; margin: 15px 0 4px; }
+    .exposure-big strong { font: 600 26px var(--mono); }
+    .exposure-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid rgba(125, 151, 143, .14); color: var(--muted); font-size: 11px; }
+    .exposure-row b { color: #d7e2de; font: 12px var(--mono); font-weight: 500; }
+    .progress-track { height: 6px; background: #2c3936; margin-top: 8px; overflow: hidden; border-radius: 5px; }
+    .progress-fill { width: 0; height: 100%; background: var(--teal); transition: width .4s ease, background .3s ease; }
+    .limit-note { display: flex; justify-content: space-between; color: var(--muted); font: 9px var(--mono); margin-top: 6px; }
+    .alert-state { display: grid; grid-template-columns: 1fr auto; gap: 9px 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(125, 151, 143, .14); font-size: 11px; }
+    .alert-state:last-child { border-bottom: 0; }
+    .alert-state span { color: var(--muted); }
+    .alert-state b { font: 10px var(--mono); color: var(--green); }
+    .alert-state b.on { color: var(--red); }
+    .oled { margin-top: 12px; padding: 11px; min-height: 54px; border: 1px solid #30423d; background: #0c1513; color: #91f3d9; font: 11px/1.5 var(--mono); text-align: center; text-shadow: 0 0 8px rgba(87, 214, 192, .2); }
+    .log-panel { margin-top: 14px; padding-bottom: 5px; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 460px; text-align: left; }
+    th { color: #7f928d; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .8px; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+    td { padding: 9px 8px; border-bottom: 1px solid rgba(125, 151, 143, .11); color: #c8d4d0; font: 11px var(--mono); }
+    td:first-child { color: var(--muted); }
+    .severity { font: 9px var(--mono); padding: 3px 6px; border-radius: 2px; background: rgba(110, 214, 163, .1); color: var(--green); }
+    .severity.warning { background: rgba(241, 184, 92, .12); color: var(--amber); }
+    .severity.danger { background: rgba(255, 108, 102, .12); color: var(--red); }
+    .leak-button { border: 1px solid rgba(241, 184, 92, .55); background: rgba(241, 184, 92, .1); color: var(--amber); border-radius: 3px; padding: 8px 11px; cursor: pointer; font-size: 11px; transition: background .2s, transform .2s; }
+    .leak-button:hover { background: rgba(241, 184, 92, .18); }
+    .leak-button:active { transform: translateY(1px); }
+    .leak-button:disabled { opacity: .55; cursor: wait; }
+    .updated { color: var(--muted); font: 10px var(--mono); }
+    .footer { display: flex; justify-content: space-between; gap: 14px; color: #71817d; font: 9px var(--mono); margin-top: 15px; }
+    @media (max-width: 1020px) {
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+      .lower-grid { grid-template-columns: repeat(2, 1fr); }
+      .lower-grid .panel:last-child { grid-column: span 2; }
+    }
+    @media (max-width: 700px) {
+      .shell { padding: 20px 14px 28px; }
+      .topbar { flex-direction: column; }
+      .top-actions { width: 100%; justify-content: space-between; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .metric { padding: 12px; }
+      .value { font-size: 23px; }
+      .grid-main, .lower-grid { grid-template-columns: 1fr; gap: 10px; }
+      .lower-grid .panel:last-child { grid-column: auto; }
+      .settings { gap: 7px; }
+      .settings .divider { display: none; }
+      .subtle { width: 100%; margin-left: 0; }
+      .panel { padding: 14px; }
+      .footer { flex-direction: column; }
+    }
+    @media (max-width: 390px) {
+      .badge { padding: 8px; font-size: 9px; }
+      .mode-switch button { padding: 7px; }
+      .metric-name { font-size: 10px; }
+      .state { font-size: 8px; }
+      .value { font-size: 21px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Wearable environmental monitoring / ESP32</div>
+        <h1>H2S Dosimeter Wristband</h1>
+        <div class="team">Project team &nbsp;·&nbsp; <strong>Pruthvi Raj TN</strong>, <strong>Jeshwanth M</strong>, <strong>Hiruthik Krishna E</strong></div>
+      </div>
+      <div class="top-actions">
+        <div class="badge" id="connectionBadge"><i class="dot"></i><span id="connectionText">SIMULATED / CONNECTED</span></div>
+        <div class="mode-switch" aria-label="Data source">
+          <button type="button" class="active" id="simulationMode">Simulation</button>
+          <button type="button" id="liveMode">Live mode</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="settings" aria-label="Device and threshold settings">
+      <span class="section-kicker">Thresholds</span>
+      <label for="warningThreshold">Warning</label><input id="warningThreshold" type="number" min="0.1" step="0.5" value="5" aria-label="Warning threshold in ppm">
+      <span class="unit">ppm</span>
+      <label for="dangerThreshold">Danger</label><input id="dangerThreshold" type="number" min="0.2" step="0.5" value="10" aria-label="Danger threshold in ppm">
+      <span class="unit">ppm</span>
+      <span class="divider"></span>
+      <label for="endpoint">ESP32 endpoint</label><input id="endpoint" class="endpoint" type="url" value="http://192.168.4.1/data" aria-label="Live data endpoint">
+      <span class="subtle">Live JSON keys: h2s, mq2_raw, mq2_ppm, temperature, humidity, battery</span>
+    </section>
+
+    <section class="metrics" aria-label="Current sensor readings">
+      <article class="metric" id="cardH2s" style="--state: var(--green)"><div class="metric-head"><span class="metric-name">H2S concentration</span><span class="state" id="stateH2s">SAFE</span></div><div class="value-line"><span class="value" id="h2sValue">0.8</span><span class="unit">ppm</span></div><div class="mini-meta">Electrochemical sensor</div><svg class="sparkline" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true"><path id="sparkH2s" d=""></path></svg></article>
+      <article class="metric" id="cardMq2" style="--state: var(--green)"><div class="metric-head"><span class="metric-name">MQ2 gas sensor</span><span class="state" id="stateMq2">SAFE</span></div><div class="value-line"><span class="value" id="mq2PpmValue">18</span><span class="unit">ppm est.</span></div><div class="mini-meta">Raw <span id="mq2RawValue">312</span> ADC</div><svg class="sparkline" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true"><path id="sparkMq2" d=""></path></svg></article>
+      <article class="metric" id="cardTemp" style="--state: var(--green)"><div class="metric-head"><span class="metric-name">Temperature</span><span class="state" id="stateTemp">NORMAL</span></div><div class="value-line"><span class="value" id="temperatureValue">24.6</span><span class="unit">°C</span></div><div class="mini-meta">DHT sensor</div><svg class="sparkline" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true"><path id="sparkTemp" d=""></path></svg></article>
+      <article class="metric" id="cardHumidity" style="--state: var(--green)"><div class="metric-head"><span class="metric-name">Humidity</span><span class="state" id="stateHumidity">NORMAL</span></div><div class="value-line"><span class="value" id="humidityValue">46.2</span><span class="unit">%</span></div><div class="mini-meta">DHT sensor</div><svg class="sparkline" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true"><path id="sparkHumidity" d=""></path></svg></article>
+      <article class="metric" id="cardBattery" style="--state: var(--green)"><div class="metric-head"><span class="metric-name">LiPo battery</span><span class="state" id="stateBattery">GOOD</span></div><div class="value-line"><span class="value" id="batteryValue">87</span><span class="unit">%</span></div><div class="mini-meta">Estimated charge</div><svg class="sparkline" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true"><path id="sparkBattery" d=""></path></svg></article>
+    </section>
+
+    <section class="grid-main">
+      <article class="panel">
+        <div class="panel-head"><div><div class="section-kicker">Electrochemical / H2S</div><h2>Concentration gauge</h2></div><span class="panel-note">0–20 ppm</span></div>
+        <div class="gauge-wrap">
+          <svg class="gauge" viewBox="0 0 240 150" role="img" aria-label="Current H2S concentration gauge">
+            <path class="gauge-track" d="M 34 124 A 86 86 0 0 1 206 124" pathLength="100"></path>
+            <path id="gaugeValue" class="gauge-value" d="M 34 124 A 86 86 0 0 1 206 124" pathLength="100" stroke-dasharray="100" stroke-dashoffset="96"></path>
+            <text x="30" y="144" fill="#91a39f" font-size="9" font-family="monospace">0</text>
+            <text x="117" y="24" fill="#91a39f" font-size="9" font-family="monospace">10</text>
+            <text x="198" y="144" fill="#91a39f" font-size="9" font-family="monospace">20</text>
+          </svg>
+          <div class="gauge-copy"><div class="gauge-number" id="gaugeNumber">0.8</div><div class="gauge-unit">PPM H2S</div></div>
+        </div>
+        <div class="gauge-scale"><span>0 ppm</span><span id="gaugeCurrentState">SAFE</span><span>20 ppm</span></div>
+        <div class="bands"><div class="band">SAFE<br><span id="safeBand">&lt; 5 ppm</span></div><div class="band warn">WARNING<br><span id="warningBand">5–10 ppm</span></div><div class="band danger">DANGER<br><span id="dangerBand">≥ 10 ppm</span></div></div>
+      </article>
+
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><div class="section-kicker">Rolling history</div><h2>Gas readings</h2></div><div class="legend"><span><i></i>H2S / ppm</span><span><i class="mq-key"></i>MQ2 / ppm est.</span></div></div>
+        <div class="chart-wrap"><canvas id="historyChart" aria-label="H2S and MQ2 readings over the last five minutes"></canvas></div>
+      </article>
+    </section>
+
+    <section class="lower-grid">
+      <article class="panel">
+        <div class="panel-head"><div><div class="section-kicker">Session exposure</div><h2>Cumulative dose</h2></div><span class="panel-note" id="sessionDuration">00:00</span></div>
+        <div class="exposure-big"><strong id="twaValue">0.00</strong><span class="unit">ppm TWA</span></div>
+        <div class="exposure-row"><span>Integrated dose</span><b><span id="doseValue">0.00</span> ppm·min</b></div>
+        <div class="exposure-row"><span>Demo reference (8h TWA)</span><b>10 ppm TWA</b></div>
+        <div class="progress-track" role="progressbar" aria-label="Progress toward daily exposure reference" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill" id="exposureProgress"></div></div>
+        <div class="limit-note"><span id="limitPercent">0% of daily reference</span><span>NIOSH IDLH: 100 ppm</span></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><div><div class="section-kicker">Output state</div><h2>Wristband alerts</h2></div><span class="panel-note">ESP32 response</span></div>
+        <div class="alert-state"><span>Buzzer</span><b id="buzzerState">OFF</b></div>
+        <div class="alert-state"><span>Vibration motor</span><b id="vibrationState">OFF</b></div>
+        <div class="oled" id="oledMessage">H2S LEVEL: NORMAL<br>Environment OK</div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><div><div class="section-kicker">Demonstration</div><h2>Exposure simulation</h2></div></div>
+        <p style="color:var(--muted);font-size:11px;margin:12px 0 16px">Ramp a simulated H2S leak through warning and danger levels, then clear the air.</p>
+        <button type="button" class="leak-button" id="leakButton">▶ &nbsp; Simulate gas leak</button>
+        <div class="updated" style="margin-top:13px">Last update &nbsp;<span id="lastUpdate">--:--:--</span></div>
+        <div class="updated" style="margin-top:5px">Device &nbsp;<span id="deviceStatus">Connected</span></div>
+      </article>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="panel-head"><div><div class="section-kicker">Event stream</div><h2>Alert log</h2></div><span class="panel-note" id="alertCount">0 events</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Sensor</th><th>Value</th><th>Severity</th></tr></thead><tbody id="alertRows"><tr id="emptyLog"><td colspan="4" style="text-align:center;color:#71817d;padding:18px">No threshold events in this session</td></tr></tbody></table></div>
+    </section>
+    <footer class="footer"><span>H2S DOSIMETER WRISTBAND &nbsp;·&nbsp; PROTOTYPE MONITORING CONSOLE</span><span>Simulation values are illustrative; not for life-safety decisions.</span></footer>
+  </main>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const colors = { green: '#6ed6a3', amber: '#f1b85c', red: '#ff6c66' };
+      const data = { h2s: 0.8, mq2_raw: 312, mq2_ppm: 18, temperature: 24.6, humidity: 46.2, battery: 87 };
+      const history = { h2s: [], mq2: [], temp: [], humidity: [], battery: [] };
+      const startedAt = Date.now();
+      let mode = 'simulation';
+      let leakStarted = 0;
+      let leakOffset = 0;
+      let fetchInFlight = false;
+      let previousSeverity = 'safe';
+      let lastAlertAt = 0;
+      let cumulativeDose = 0;
+      let lastDoseAt = 0;
+      let lastDoseReading = data.h2s;
+      const maxHistory = 300;
+      const severityRank = { safe: 0, warning: 1, danger: 2 };
+
+      const warningInput = $('warningThreshold');
+      const dangerInput = $('dangerThreshold');
+      const warningThreshold = () => Math.max(0.1, Number(warningInput.value) || 5);
+      const dangerThreshold = () => Math.max(warningThreshold() + 0.1, Number(dangerInput.value) || 10);
+      const severityFor = (value) => value >= dangerThreshold() ? 'danger' : value >= warningThreshold() ? 'warning' : 'safe';
+
+      let chart = null;
+      if (window.Chart) {
+        chart = new Chart($('historyChart'), {
+          type: 'line',
+          data: { labels: [], datasets: [
+            { label: 'H2S / ppm', data: [], borderColor: '#57d6c0', backgroundColor: 'rgba(87,214,192,.08)', borderWidth: 2, pointRadius: 0, tension: .28, fill: true },
+            { label: 'MQ2 / ppm est.', data: [], borderColor: '#f1b85c', borderWidth: 1.6, pointRadius: 0, tension: .28, yAxisID: 'y1' }
+          ] },
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: { legend: { display: false }, tooltip: { backgroundColor: '#101918', borderColor: '#3a4b47', borderWidth: 1, titleFont: { family: 'monospace' }, bodyFont: { family: 'monospace' } } },
+            scales: {
+              x: { ticks: { color: '#81928d', maxTicksLimit: 6, maxRotation: 0, font: { family: 'monospace', size: 9 } }, grid: { color: 'rgba(145,163,159,.09)' } },
+              y: { min: 0, suggestedMax: 12, ticks: { color: '#57d6c0', font: { family: 'monospace', size: 9 } }, grid: { color: 'rgba(145,163,159,.09)' }, title: { display: true, text: 'H2S / ppm', color: '#91a39f', font: { size: 9 } } },
+              y1: { position: 'right', min: 0, suggestedMax: 100, ticks: { color: '#f1b85c', font: { family: 'monospace', size: 9 } }, grid: { drawOnChartArea: false }, title: { display: true, text: 'MQ2 / ppm est.', color: '#91a39f', font: { size: 9 } } }
+            }
+          }
+        });
+      }
+
+      function recordAlert(sensor, value, severity) {
+        const empty = $('emptyLog');
+        if (empty) empty.remove();
+        const row = document.createElement('tr');
+        const timestamp = new Date().toLocaleTimeString([], { hour12: false });
+        row.innerHTML = `<td>${timestamp}</td><td>${sensor}</td><td>${value} ppm</td><td><span class="severity ${severity}">${severity.toUpperCase()}</span></td>`;
+        $('alertRows').prepend(row);
+        while ($('alertRows').children.length > 12) $('alertRows').lastElementChild.remove();
+        const count = Number($('alertCount').dataset.total || 0) + 1;
+        $('alertCount').dataset.total = count;
+        $('alertCount').textContent = `${count} event${count === 1 ? '' : 's'}`;
+      }
+
+      function addHistory(key, value) {
+        history[key].push(value);
+        if (history[key].length > maxHistory) history[key].shift();
+        const values = history[key];
+        const low = Math.min(...values);
+        const span = Math.max(.001, Math.max(...values) - low);
+        const path = values.map((point, index) => {
+          const x = values.length < 2 ? 0 : index * 120 / (values.length - 1);
+          const y = 27 - (point - low) / span * 23;
+          return `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        const sparkId = { h2s: 'sparkH2s', mq2: 'sparkMq2', temp: 'sparkTemp', humidity: 'sparkHumidity', battery: 'sparkBattery' }[key];
+        $(sparkId).setAttribute('d', path);
+      }
+
+      function setCardState(cardId, stateId, severity, label) {
+        const color = colors[severity] || colors.green;
+        $(cardId).style.setProperty('--state', color);
+        $(stateId).textContent = label;
+      }
+
+      function render() {
+        const h2sSeverity = severityFor(data.h2s);
+        $('h2sValue').textContent = data.h2s.toFixed(1);
+        $('mq2PpmValue').textContent = Math.round(data.mq2_ppm);
+        $('mq2RawValue').textContent = Math.round(data.mq2_raw);
+        $('temperatureValue').textContent = data.temperature.toFixed(1);
+        $('humidityValue').textContent = data.humidity.toFixed(1);
+        $('batteryValue').textContent = Math.round(data.battery);
+        $('gaugeNumber').textContent = data.h2s.toFixed(1);
+        $('gaugeValue').style.strokeDashoffset = String(100 - Math.min(data.h2s / 20, 1) * 100);
+        $('gaugeValue').style.stroke = colors[h2sSeverity];
+        $('gaugeCurrentState').textContent = h2sSeverity.toUpperCase();
+        setCardState('cardH2s', 'stateH2s', h2sSeverity, h2sSeverity.toUpperCase());
+        const mqSeverity = data.mq2_ppm >= 100 ? 'danger' : data.mq2_ppm >= 50 ? 'warning' : 'safe';
+        setCardState('cardMq2', 'stateMq2', mqSeverity, mqSeverity.toUpperCase());
+        const tempSeverity = data.temperature >= 40 ? 'danger' : data.temperature >= 35 ? 'warning' : 'safe';
+        setCardState('cardTemp', 'stateTemp', tempSeverity, tempSeverity === 'safe' ? 'NORMAL' : tempSeverity.toUpperCase());
+        const humiditySeverity = data.humidity >= 85 || data.humidity < 15 ? 'warning' : 'safe';
+        setCardState('cardHumidity', 'stateHumidity', humiditySeverity, humiditySeverity === 'safe' ? 'NORMAL' : 'CHECK');
+        const batterySeverity = data.battery <= 15 ? 'danger' : data.battery <= 30 ? 'warning' : 'safe';
+        setCardState('cardBattery', 'stateBattery', batterySeverity, batterySeverity === 'safe' ? 'GOOD' : batterySeverity.toUpperCase());
+
+        const active = h2sSeverity !== 'safe';
+        $('buzzerState').textContent = active ? 'ON' : 'OFF';
+        $('vibrationState').textContent = active ? 'ON' : 'OFF';
+        $('buzzerState').classList.toggle('on', active);
+        $('vibrationState').classList.toggle('on', active);
+        $('oledMessage').innerHTML = h2sSeverity === 'danger' ? 'DANGER: H2S DETECTED<br>EVACUATE AREA' : h2sSeverity === 'warning' ? 'WARNING: H2S RISING<br>CHECK ENVIRONMENT' : 'H2S LEVEL: NORMAL<br>Environment OK';
+
+        const now = Date.now();
+        if (lastDoseAt) cumulativeDose += ((lastDoseReading + data.h2s) / 2) * (now - lastDoseAt) / 60000;
+        lastDoseAt = now;
+        lastDoseReading = data.h2s;
+        const elapsedMinutes = Math.max((now - startedAt) / 60000, 1 / 60);
+        const dose = cumulativeDose;
+        const twa = dose / elapsedMinutes;
+        const progress = Math.min(twa / 10 * 100, 100);
+        $('twaValue').textContent = twa.toFixed(2);
+        $('doseValue').textContent = dose.toFixed(2);
+        $('exposureProgress').style.width = `${progress}%`;
+        $('exposureProgress').style.background = progress >= 100 ? colors.red : progress >= 50 ? colors.amber : 'var(--teal)';
+        $('exposureProgress').parentElement.setAttribute('aria-valuenow', progress.toFixed(0));
+        $('limitPercent').textContent = `${progress.toFixed(1)}% of daily reference`;
+        const elapsedSeconds = Math.floor((now - startedAt) / 1000);
+        $('sessionDuration').textContent = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
+        $('lastUpdate').textContent = new Date().toLocaleTimeString([], { hour12: false });
+
+        Object.entries({ h2s: data.h2s, mq2: data.mq2_ppm, temp: data.temperature, humidity: data.humidity, battery: data.battery }).forEach(([key, value]) => addHistory(key, value));
+        if (chart) {
+          const label = new Date().toLocaleTimeString([], { hour12: false });
+          chart.data.labels.push(label);
+          chart.data.datasets[0].data.push(data.h2s);
+          chart.data.datasets[1].data.push(data.mq2_ppm);
+          if (chart.data.labels.length > maxHistory) {
+            chart.data.labels.shift();
+            chart.data.datasets.forEach((dataset) => dataset.data.shift());
+          }
+          chart.options.scales.y.suggestedMax = Math.max(12, Math.ceil(data.h2s / 5) * 5);
+          chart.options.scales.y1.suggestedMax = Math.max(100, Math.ceil(data.mq2_ppm / 20) * 20);
+          chart.update('none');
+        }
+
+        if (severityRank[h2sSeverity] > severityRank[previousSeverity] && Date.now() - lastAlertAt > 1500) {
+          recordAlert('Electrochemical H2S', data.h2s.toFixed(1), h2sSeverity);
+          lastAlertAt = Date.now();
+        }
+        previousSeverity = h2sSeverity;
+      }
+
+      function simulate() {
+        const now = Date.now();
+        if (leakStarted) {
+          const seconds = (now - leakStarted) / 1000;
+          leakOffset = seconds < 18 ? Math.min(seconds * .85, 15) : Math.max(0, 15 - (seconds - 18) * .75);
+          if (seconds > 38) { leakOffset = 0; leakStarted = 0; $('leakButton').disabled = false; $('leakButton').innerHTML = '▶ &nbsp; Simulate gas leak'; }
+        }
+        const drift = Math.sin(now / 17000) * .16 + Math.sin(now / 5300) * .07;
+        data.h2s = Math.max(0.1, 0.8 + drift + leakOffset);
+        data.mq2_ppm = Math.max(4, 18 + drift * 10 + leakOffset * 5 + Math.sin(now / 11000) * 3);
+        data.mq2_raw = Math.round(312 + data.mq2_ppm * 5.2 + Math.sin(now / 9000) * 8);
+        data.temperature = 24.6 + Math.sin(now / 45000) * .4 + (Math.random() - .5) * .08;
+        data.humidity = 46.2 + Math.sin(now / 38000) * 1.3 + (Math.random() - .5) * .2;
+        data.battery = Math.max(0, 87 - (now - startedAt) / 3600000 * 2);
+        render();
+      }
+
+      // Replace the field mapping here if your ESP32 firmware uses different JSON keys.
+      async function readLiveData() {
+        if (fetchInFlight) return;
+        fetchInFlight = true;
+        try {
+          const response = await fetch($('endpoint').value, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const json = await response.json();
+          const number = (key, fallback) => Number.isFinite(Number(json[key])) ? Number(json[key]) : fallback;
+          data.h2s = number('h2s', data.h2s);
+          data.mq2_raw = number('mq2_raw', data.mq2_raw);
+          data.mq2_ppm = number('mq2_ppm', data.mq2_ppm);
+          data.temperature = number('temperature', data.temperature);
+          data.humidity = number('humidity', data.humidity);
+          data.battery = number('battery', data.battery);
+          $('connectionBadge').classList.remove('offline');
+          $('connectionText').textContent = 'LIVE / CONNECTED';
+          $('deviceStatus').textContent = 'Connected';
+          render();
+        } catch (error) {
+          $('connectionBadge').classList.add('offline');
+          $('connectionText').textContent = 'LIVE / DISCONNECTED';
+          $('deviceStatus').textContent = 'Disconnected';
+        } finally {
+          fetchInFlight = false;
+        }
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        $('simulationMode').classList.toggle('active', mode === 'simulation');
+        $('liveMode').classList.toggle('active', mode === 'live');
+        if (mode === 'simulation') {
+          $('connectionBadge').classList.remove('offline');
+          $('connectionText').textContent = 'SIMULATED / CONNECTED';
+          $('deviceStatus').textContent = 'Connected (simulated)';
+        } else {
+          $('connectionText').textContent = 'LIVE / CONNECTING';
+          readLiveData();
+        }
+      }
+
+      $('simulationMode').addEventListener('click', () => setMode('simulation'));
+      $('liveMode').addEventListener('click', () => setMode('live'));
+      $('leakButton').addEventListener('click', () => {
+        if (mode !== 'simulation') setMode('simulation');
+        if (leakStarted) return;
+        leakStarted = Date.now();
+        $('leakButton').disabled = true;
+        $('leakButton').textContent = 'Leak sequence running...';
+      });
+      warningInput.addEventListener('change', () => {
+        if (Number(dangerInput.value) <= warningThreshold()) dangerInput.value = String(warningThreshold() + 1);
+        $('safeBand').textContent = `< ${warningThreshold()} ppm`;
+        $('warningBand').textContent = `${warningThreshold()}–${dangerThreshold()} ppm`;
+        $('dangerBand').textContent = `≥ ${dangerThreshold()} ppm`;
+        render();
+      });
+      dangerInput.addEventListener('change', () => {
+        if (Number(dangerInput.value) <= warningThreshold()) dangerInput.value = String(warningThreshold() + 1);
+        $('safeBand').textContent = `< ${warningThreshold()} ppm`;
+        $('warningBand').textContent = `${warningThreshold()}–${dangerThreshold()} ppm`;
+        $('dangerBand').textContent = `≥ ${dangerThreshold()} ppm`;
+        render();
+      });
+
+      simulate();
+      setInterval(() => mode === 'simulation' ? simulate() : readLiveData(), 1000);
+    })();
+  </script>
+</body>
+</html>
